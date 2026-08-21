@@ -29,7 +29,7 @@ selected_account = st.sidebar.selectbox(
 st.sidebar.caption("Mocked auth: this dropdown stands in for a real customer login.")
 
 if "chat_history" not in st.session_state or st.session_state.get("account_id") != selected_account:
-    st.session_state.chat_history = []  # [(role, text)]
+    st.session_state.chat_history = []  # [(role, text, trace_or_None)]
     st.session_state.account_id = selected_account
     st.session_state.pending_actions = []
 
@@ -48,19 +48,28 @@ for pending in st.session_state.pending_actions:
                 note = f"✅ Action executed: **{pending['action_type']}** (id `{pending['action_id']}`)."
             else:
                 note = f"❌ Action failed: {resp.json().get('detail', 'unknown error')}"
-            st.session_state.chat_history.append(("assistant", note))
+            st.session_state.chat_history.append(("assistant", note, None))
             st.rerun()
         if col2.button("Cancel", key=f"cancel_{pending['action_id']}"):
             st.session_state.pending_actions.remove(pending)
             st.rerun()
 
+def _render_trace(trace: list[dict]) -> None:
+    with st.expander(f"Tool calls this turn ({len(trace)})"):
+        for step in trace:
+            st.markdown(f"**{step['tool']}**")
+            st.json({"input": step["input"], "result": step["result"]})
+
+
 # --- chat history ------------------------------------------------------------
-for role, text in st.session_state.chat_history:
+for role, text, trace in st.session_state.chat_history:
     st.chat_message(role).write(text)
+    if trace:
+        _render_trace(trace)
 
 user_message = st.chat_input("Ask about an order, cancellation, SLA, or account issue...")
 if user_message:
-    st.session_state.chat_history.append(("user", user_message))
+    st.session_state.chat_history.append(("user", user_message, None))
     st.chat_message("user").write(user_message)
 
     with st.spinner("Thinking..."):
@@ -73,14 +82,10 @@ if user_message:
         st.error(resp.text)
     else:
         data = resp.json()
-        st.session_state.chat_history.append(("assistant", data["reply"]))
+        st.session_state.chat_history.append(("assistant", data["reply"], data["trace"] or None))
         st.chat_message("assistant").write(data["reply"])
-
         if data["trace"]:
-            with st.expander(f"🔧 Tool calls this turn ({len(data['trace'])})"):
-                for step in data["trace"]:
-                    st.markdown(f"**{step['tool']}**")
-                    st.json({"input": step["input"], "result": step["result"]})
+            _render_trace(data["trace"])
 
         st.session_state.pending_actions.extend(data["pending_actions"])
         if data["pending_actions"]:
