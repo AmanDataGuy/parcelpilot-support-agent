@@ -87,7 +87,14 @@ def run_turn(messages: list[dict], account_id: str, max_tool_rounds: int = 6) ->
         response_parts = []
         for call in function_calls:
             call_args = dict(call.args or {})
-            result = tools.dispatch(call.name, call_args, account_id=account_id)
+            try:
+                result = tools.dispatch(call.name, call_args, account_id=account_id)
+            except Exception as exc:
+                # A malformed tool argument (e.g. a bad model-generated
+                # timestamp) must not crash the whole request — feed the
+                # error back as a tool result so the agent can retry or
+                # explain the failure instead of the API returning a 500.
+                result = {"error": str(exc)}
             trace.append({"tool": call.name, "input": call_args, "result": result})
             response_parts.append(
                 types.Part.from_function_response(name=call.name, response={"result": result})
