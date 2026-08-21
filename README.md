@@ -1,68 +1,102 @@
-<img src="assets/logo.svg" width="64" alt="ParcelPilot logo">
+<div align="center">
+
+<img src="assets/logo.svg" width="72" alt="ParcelPilot logo">
 
 # ParcelPilot Support Agent
 
-A customer-facing support chatbot for ParcelPilot, a B2B logistics platform. A single tool-calling Gemini agent answers questions about entitlements, cancellations, SLAs, and service credits by reasoning over policy documents, signed customer agreements, and structured account/order/ticket data, scoped so a customer can only ever see their own account's data.
+**Account-Scoped Support Chatbot for a B2B Logistics Platform**
 
-Architecture, product, and AI-tool-usage notes: [`docs/`](docs/).
+[![Python](https://img.shields.io/badge/Python-3.11-3776AB?style=flat-square&logo=python&logoColor=white)](https://python.org)
+[![FastAPI](https://img.shields.io/badge/FastAPI-Backend-009688?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
+[![Gemini](https://img.shields.io/badge/Gemini_2.5_Flash-Agent-4285F4?style=flat-square&logo=googlegemini&logoColor=white)](https://ai.google.dev)
+[![Streamlit](https://img.shields.io/badge/Streamlit-Frontend-FF4B4B?style=flat-square&logo=streamlit&logoColor=white)](https://streamlit.io)
+[![pandas](https://img.shields.io/badge/pandas-Structured_Data-150458?style=flat-square&logo=pandas&logoColor=white)](https://pandas.pydata.org)
+[![pytest](https://img.shields.io/badge/pytest-Tests-0A9EDC?style=flat-square&logo=pytest&logoColor=white)](https://pytest.org)
+
+*A single tool-calling agent answers customer questions by reasoning over policy documents, signed contracts, and live account data — scoped so a customer can only ever see their own account, and gated so no action fires without confirmation.*
+
+</div>
+
+---
+
+## What It Does
+
+A customer asks: **"Can Northstar cancel ORD-1001 without a cancellation fee? Explain why."**
+
+The agent looks up the order, identifies the account, retrieves the customer's signed agreement, checks it against the general cancellation policy, resolves the override, and answers — citing the exact clause. The same loop handles SLA-breach detection, service-credit calculation, and knowing when to stop and escalate instead of guessing.
+
+---
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-    UI["Streamlit Chat UI"]
+    classDef input fill:#dbeafe,stroke:#2563eb,stroke-width:2px,color:#1e3a8a
+    classDef interface fill:#d1fae5,stroke:#059669,stroke-width:2px,color:#064e3b
+    classDef agent fill:#fce7f3,stroke:#db2777,stroke-width:2px,color:#831843
+    classDef tool fill:#fef3c7,stroke:#d97706,stroke-width:2px,color:#78350f
+    classDef data fill:#e0f2fe,stroke:#0284c7,stroke-width:2px,color:#0c4a6e
+    classDef output fill:#fee2e2,stroke:#dc2626,stroke-width:2px,color:#7f1d1d
 
-    subgraph backend["FastAPI Backend"]
-        ACCTS["GET /accounts"]
-        CHAT["POST /chat"]
-        CONFIRM["POST /confirm"]
-        AGENT["Agent Loop (Gemini)"]
-        DISPATCH["Tool Dispatcher\n(account_id bound server-side)"]
-    end
+    User[Customer]:::input --> UI[Streamlit Chat UI]:::interface
+    UI -->|account_id, message| CHAT[POST /chat]:::interface
+    UI -->|action_id| CONFIRM[POST /confirm]:::interface
+    UI --> ACCTS[GET /accounts]:::interface
 
-    subgraph tools["Tools"]
-        SEARCH["search_documents"]
-        QUERY["query_account_data"]
-        PROPOSE["propose_action"]
-    end
+    CHAT --> AGENT[Agent Loop<br>Gemini 2.5 Flash]:::agent
+    AGENT <--> DISPATCH[Tool Dispatcher<br>account_id bound server-side]:::agent
 
-    subgraph data["Data Sources"]
-        PDF[("PDF corpus\nTF-IDF index")]
-        XLSX[("accounts / orders / tickets\npandas")]
-        ACTIONS[("In-memory action store")]
-    end
+    DISPATCH --> SEARCH[search_documents]:::tool
+    DISPATCH --> QUERY[query_account_data]:::tool
+    DISPATCH --> PROPOSE[propose_action]:::tool
 
-    UI -->|account_id, message| CHAT
-    UI --> ACCTS
-    UI -->|action_id| CONFIRM
-    CHAT --> AGENT
-    AGENT <--> DISPATCH
-    DISPATCH --> SEARCH --> PDF
-    DISPATCH --> QUERY --> XLSX
-    DISPATCH --> PROPOSE --> ACTIONS
+    SEARCH --> PDF[("PDF corpus<br>TF-IDF index")]:::data
+    QUERY --> XLSX[("accounts / orders / tickets<br>pandas")]:::data
+    PROPOSE --> ACTIONS[("Pending action store")]:::data
     CONFIRM --> ACTIONS
+
+    AGENT --> REPLY[Grounded reply<br>+ escalation if needed]:::output
 ```
 
-`propose_action` only stages a proposal; `execute_action` is reachable exclusively from `POST /confirm`, never from the agent's tool schema, so an action cannot fire without an explicit user confirmation. `account_id` is resolved server-side from the session and injected into every tool call, not read from model output, so access control does not depend on the model behaving correctly. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the full design rationale and trade-offs.
+`propose_action` only stages a proposal; `execute_action` is reachable exclusively from `POST /confirm`, never from the agent's tool schema, so an action cannot fire without explicit user confirmation. `account_id` is resolved server-side from the session and injected into every tool call rather than read from model output, so access control does not depend on the model behaving correctly. Full rationale and trade-offs: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
-## Tech stack
+---
+
+<div align="center">
+
+## Tools
+
+| Tool | Type | Responsibility |
+|:---:|:---:|:---|
+| `search_documents` | Retrieval | TF-IDF search over active policy, SOP, and contract PDFs — never the deprecated policy, never another account's agreement |
+| `query_account_data` | Structured lookup / calculation | Account-scoped orders, tickets, and elapsed-time arithmetic against the fixed dataset snapshot time |
+| `propose_action` | State-changing (confirmation-gated) | Stages an escalation, ticket update, or follow-up task; requires a separate confirmed call to execute |
+
+</div>
+
+---
+
+<div align="center">
+
+## Tech Stack
 
 | Layer | Choice | Why |
-|---|---|---|
-| LLM | Gemini 2.5 Flash (`google-genai`) | Native function calling, low cost |
-| Backend | FastAPI + Uvicorn | Thin, typed, async-capable API layer |
-| Structured data | pandas over the source xlsx | Dataset is a handful of rows per sheet; no database needed |
-| Document retrieval | scikit-learn TF-IDF + cosine similarity | Corpus is 5 single-page PDFs; no vector store needed |
-| PDF parsing | pypdf | Pure Python, no native deps |
-| Frontend | Streamlit | Chat UI with per-turn tool-call trace |
-| Tests | pytest | Access control, confirmation gate, live trap-question suite |
+|:---:|:---|:---|
+| **LLM** | Gemini 2.5 Flash (`google-genai`) | Native function calling, low cost |
+| **Backend** | FastAPI + Uvicorn | Thin, typed, async-capable API layer |
+| **Structured data** | pandas over the source xlsx | A handful of rows per sheet; no database needed |
+| **Document retrieval** | scikit-learn TF-IDF + cosine similarity | Corpus is 5 single-page PDFs; no vector store needed |
+| **PDF parsing** | pypdf | Pure Python, no native dependencies |
+| **Frontend** | Streamlit | Chat UI with a per-turn tool-call trace |
+| **Tests** | pytest | Access control, confirmation gate, live trap-question suite |
 
-## Prerequisites
+</div>
 
-- Python 3.11+
-- A Gemini API key ([Google AI Studio](https://aistudio.google.com/apikey))
+---
 
 ## Setup
+
+Requires Python 3.11+ and a Gemini API key ([Google AI Studio](https://aistudio.google.com/apikey)).
 
 ```bash
 python -m venv .venv
@@ -75,9 +109,7 @@ cp .env.example .env             # fill in GEMINI_API_KEY
 
 Place the candidate data pack (6 PDFs + `ParcelPilot_Assessment_Data.xlsx`) in `data/raw/` if not already present. The app reads directly from those files at startup; nothing is pre-processed into the repo.
 
-## Configuration
-
-Environment variables, set in `.env`:
+**Environment variables** (`.env`):
 
 | Variable | Default | Purpose |
 |---|---|---|
@@ -101,7 +133,7 @@ streamlit run app.py
 
 Open the Streamlit URL (default `http://localhost:8501`). The sidebar dropdown switches which customer account the session is scoped to.
 
-## API reference
+## API Reference
 
 | Method | Path | Body | Description |
 |---|---|---|---|
@@ -116,13 +148,14 @@ cd backend
 pytest
 ```
 
-- `test_access_control.py` — a session scoped to one account can never read another account's orders, tickets, or signed agreement; server ignores any `account_id` a tool call tries to smuggle
+- `test_access_control.py` — a session scoped to one account can never read another account's orders, tickets, or signed agreement; the server ignores any `account_id` a tool call tries to smuggle
 - `test_confirmation_flow.py` — an action never executes without a prior proposal and explicit confirmation, and cannot be replayed
+- `test_agent_error_handling.py` — a malformed tool argument fails the tool call without crashing the request
 - `test_trap_questions.py` — five adversarial questions targeting known trust-and-reliability failure modes (stale documents, contract overrides, low-trust historical data, out-of-scope requests, cross-account access); requires `GEMINI_API_KEY`, skipped otherwise
 
 Results: [`docs/PRODUCT_NOTE.md`](docs/PRODUCT_NOTE.md).
 
-## Project structure
+## Project Structure
 
 ```text
 backend/app/
@@ -133,11 +166,21 @@ backend/app/
   tools.py      Gemini tool schemas and dispatcher
   agent.py      tool-calling loop and system prompt
   main.py       FastAPI app: /accounts, /chat, /confirm
-backend/tests/  access-control, confirmation-flow, trap-question tests
+backend/tests/  access-control, confirmation-flow, error-handling, trap-question tests
 frontend/app.py Streamlit chat UI
-assets/         project logo
+assets/         logo and demo screenshot
 docs/           architecture note, product note, AI-tool-usage note
 ```
+
+## Demo
+
+<div align="center">
+
+<img src="assets/demo.png" width="640" alt="ParcelPilot Support chat showing a cancellation-fee question answered with a cited agreement clause and an expandable tool-call trace">
+
+*A multi-step query — order lookup, agreement retrieval, policy comparison — answered with a cited source and an expandable tool-call trace.*
+
+</div>
 
 ## Status
 
