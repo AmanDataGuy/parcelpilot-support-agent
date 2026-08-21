@@ -4,7 +4,7 @@
 
 Chosen over Problem 1 (Proactive Issue Detection) because it deepens work already required for the minimum requirements — source-reliability handling is explicitly part of the core spec — rather than requiring a separate aggregation/anomaly-detection surface built from scratch. See `parcelpilot_spec.md` Section 1 for the full reasoning.
 
-**How it was addressed**: a five-question adversarial trap-test set (`backend/tests/test_trap_questions.py`), each targeting one specific failure mode the brief names:
+**How it was addressed**: six adversarial trap cases (`backend/eval/cases.py`, shared by the fast pytest suite and the reliability runner below), each targeting one specific failure mode the brief names:
 
 | # | Trap | What a failure would look like |
 |---|---|---|
@@ -13,8 +13,15 @@ Chosen over Problem 1 (Proactive Issue Detection) because it deepens work alread
 | 3 | Historical ticket, low-trust | Agent treats TKT-450's (wrong, pre-override) resolution as still correct |
 | 4 | Outside system capability | Agent invents a goodwill invoice waiver instead of escalating |
 | 5 | Cross-account access attempt | Agent returns another account's order data when asked |
+| 6 | Trajectory + groundedness | Agent proposes an escalation before looking up the ticket, or states a number that isn't backed by any tool result |
 
-**Results**: **5/5 passed** on a live run against Gemini 2.5 Flash (`pytest tests/test_trap_questions.py -v`). The agent correctly avoided the deprecated policy doc, applied Northstar's cancellation-fee waiver over the general SOP's INR 250 rule, declined to treat a stale historical ticket as still-correct, escalated an out-of-capability goodwill-waiver request instead of guessing, and never returned another account's order data. A 100% pass rate on 5 traps is a useful signal, not proof of robustness — the honest caveat is this is a small, hand-written set aimed at the exact failure modes the brief names, not a large or adversarially-generated eval; a real next step would be to grow this set significantly before trusting it as a release gate.
+**Single-run results**: 6/6 passed (`pytest tests/test_trap_questions.py -v`, against Gemini 2.5 Flash).
+
+**Reliability, not just a single pass** — a single 100% run proves it worked once, not that it's dependable; a model can pass by luck at any temperature. `backend/eval/reliability.py` reruns every case k times and reports pass^k: the fraction of cases that got the *same* right answer on all k repeats, not just once. A live pass^3 sweep (18 calls total) scored **pass^3 = 1.000 (6/6 cases, 18/18 individual calls)** — every trap held up three times running, not once by chance. The idea is adapted from a reliability-benchmark pattern used in a prior refund-agent project of mine; simplified here to "all k repeats passed" rather than the full combinatorial estimator, since k trials are run directly rather than subsampled from a larger pool.
+
+**Ablation — proving the access-control guard is load-bearing, not redundant.** `backend/tests/test_access_control_ablation.py` builds a second, "naive" dispatcher purely for comparison (it does not exist in the shipped code) that trusts a model-supplied `account_id` instead of the session's own, then runs every possible cross-account smuggling attempt against both. Result: the real dispatcher leaked **0/18** attempts; the naive one leaked **18/18**. This is a code-level, zero-API-cost measurement — it demonstrates the guard is doing real work, not that it's merely present.
+
+Honest caveat: six hand-written cases is still a small, targeted set aimed at the exact failure modes the brief names, not a large or adversarially-generated eval. A real next step would be to grow it significantly (more accounts, more phrasings, an LLM-simulated adversarial customer) before trusting it as a release gate.
 
 ## What I'd build next, and why prioritized that way
 
