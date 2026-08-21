@@ -12,6 +12,7 @@
 [![Streamlit](https://img.shields.io/badge/Streamlit-Frontend-FF4B4B?style=flat-square&logo=streamlit&logoColor=white)](https://streamlit.io)
 [![pandas](https://img.shields.io/badge/pandas-Structured_Data-150458?style=flat-square&logo=pandas&logoColor=white)](https://pandas.pydata.org)
 [![pytest](https://img.shields.io/badge/pytest-Tests-0A9EDC?style=flat-square&logo=pytest&logoColor=white)](https://pytest.org)
+![pass^3](https://img.shields.io/badge/pass%5E3-1.000-2E7D32?style=flat-square)
 
 *A single tool-calling agent answers customer questions by reasoning over policy documents, signed contracts, and live account data — scoped so a customer can only ever see their own account, and gated so no action fires without confirmation.*
 
@@ -149,9 +150,16 @@ pytest
 ```
 
 - `test_access_control.py` — a session scoped to one account can never read another account's orders, tickets, or signed agreement; the server ignores any `account_id` a tool call tries to smuggle
+- `test_access_control_ablation.py` — an **ablation**, not an assertion: a naive dispatcher built only for comparison (trusts a model-supplied `account_id`) leaks in every cross-account attempt; the real one leaks in none, over the same battery
 - `test_confirmation_flow.py` — an action never executes without a prior proposal and explicit confirmation, and cannot be replayed
 - `test_agent_error_handling.py` — a malformed tool argument fails the tool call without crashing the request
-- `test_trap_questions.py` — five adversarial questions targeting known trust-and-reliability failure modes (stale documents, contract overrides, low-trust historical data, out-of-scope requests, cross-account access); requires `GEMINI_API_KEY`, skipped otherwise
+- `test_trap_questions.py` — six adversarial cases targeting known trust-and-reliability failure modes (stale documents, contract overrides, low-trust historical data, out-of-scope requests, cross-account access, trajectory/groundedness); requires `GEMINI_API_KEY`, skipped otherwise
+
+**Reliability sweep** (pass^k — does the agent get each trap case right k times running, not just once):
+
+```bash
+python -m eval.reliability --k 3
+```
 
 Results: [`docs/PRODUCT_NOTE.md`](docs/PRODUCT_NOTE.md).
 
@@ -166,7 +174,8 @@ backend/app/
   tools.py      Gemini tool schemas and dispatcher
   agent.py      tool-calling loop and system prompt
   main.py       FastAPI app: /accounts, /chat, /confirm
-backend/tests/  access-control, confirmation-flow, error-handling, trap-question tests
+backend/tests/  access-control, ablation, confirmation-flow, error-handling, trap-question tests
+backend/eval/   shared trap cases + the pass^k reliability runner
 frontend/app.py Streamlit chat UI
 assets/         logo and demo screenshot
 docs/           architecture note, product note, AI-tool-usage note
@@ -182,6 +191,17 @@ docs/           architecture note, product note, AI-tool-usage note
 
 </div>
 
+## Scope and Limitations
+
+Stated plainly, because a README that hides its edges isn't evidence of anything.
+
+- **Auth is mocked.** The account switcher stands in for a real customer login — explicitly allowed by the brief. Access control itself is real and tested; only the identity check in front of it is a stand-in.
+- **Action execution is mocked.** `propose_action` / `execute_action` write to an in-memory store, not a real ticketing system. The confirmation gate (never execute without an explicit confirm) is the part that matters and is tested; the backend it eventually points at is not.
+- **The dataset's "now" is pinned**, not read from the wall clock — the workbook was snapshotted at `2026-08-16 11:00 Asia/Kolkata`, and every elapsed-time calculation is computed against that fixed instant. A real deployment would need this to track actual time.
+- **The trap suite is six hand-written cases**, not a large or adversarially-generated eval. pass^3 = 1.000 means every case held up three times running against the specific failure modes it targets — it is not a claim of general robustness.
+- **No entity linking between tickets and orders.** A ticket referencing an order does so only in free text; the agent infers the connection from context on every query rather than following a foreign key.
+- **Single-account-at-a-time sessions.** The backend keeps one in-memory conversation per account_id, sized for a demo, not concurrent multi-user production traffic.
+
 ## Status
 
-Runs locally end to end; not yet deployed to a public host. See [`docs/PRODUCT_NOTE.md`](docs/PRODUCT_NOTE.md) for what was intentionally left out of this submission and what would be built next.
+Runs locally end to end. See [`docs/PRODUCT_NOTE.md`](docs/PRODUCT_NOTE.md) for what was intentionally left out of this submission and what would be built next.
