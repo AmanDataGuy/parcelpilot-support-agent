@@ -202,10 +202,6 @@ Stated plainly, because a README that hides its edges isn't evidence of anything
 - **No entity linking between tickets and orders.** A ticket referencing an order does so only in free text; the agent infers the connection from context on every query rather than following a foreign key.
 - **Single-account-at-a-time sessions.** The backend keeps one in-memory conversation per account_id, sized for a demo, not concurrent multi-user production traffic.
 
-## Deployment
-
-Bootstrap script + systemd units for a plain Ubuntu EC2 instance (no Docker, no reverse proxy — this app doesn't need either): [`deploy/README.md`](deploy/README.md).
-
 ## Status
 
-Runs locally end to end; deployment artifacts are ready but not yet pointed at a live host. See [`docs/PRODUCT_NOTE.md`](docs/PRODUCT_NOTE.md) for what was intentionally left out of this submission and what would be built next.
+Runs locally end to end; not yet deployed to a public host. See [`docs/PRODUCT_NOTE.md`](docs/PRODUCT_NOTE.md) for what was intentionally left out of this submission and what would be built next.
