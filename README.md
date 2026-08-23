@@ -177,7 +177,7 @@ backend/app/
 backend/tests/  access-control, ablation, confirmation-flow, error-handling, trap-question tests
 backend/eval/   shared trap cases + the pass^k reliability runner
 frontend/app.py Streamlit chat UI
-assets/         logo and demo screenshot
+assets/         logo and demo screenshots
 docs/           architecture note, product note, AI-tool-usage note
 ```
 
@@ -188,6 +188,12 @@ docs/           architecture note, product note, AI-tool-usage note
 <img src="assets/demo.png" width="640" alt="ParcelPilot Support chat showing a cancellation-fee question answered with a cited agreement clause and an expandable tool-call trace">
 
 *A multi-step query — order lookup, agreement retrieval, policy comparison — answered with a cited source and an expandable tool-call trace.*
+
+<br><br>
+
+<img src="assets/demo-service-credit.png" width="640" alt="ParcelPilot Support chat showing a service-credit question correctly applying LumenWorks' contract-specific 4-hour threshold instead of the general 2-hour SOP default">
+
+*A source-hierarchy example — LumenWorks' contract overrides the general SOP's failed-pickup threshold, so a 3-hour delay correctly comes back not eligible under their specific 4-hour terms.*
 
 </div>
 
