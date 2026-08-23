@@ -4,6 +4,7 @@ ponytail: Streamlit's own st.session_state is the whole client-side state
 store — no Redux-style store, no separate frontend framework.
 """
 import os
+import uuid
 from pathlib import Path
 
 import requests
@@ -32,6 +33,10 @@ if "chat_history" not in st.session_state or st.session_state.get("account_id") 
     st.session_state.chat_history = []  # [(role, text, trace_or_None)]
     st.session_state.account_id = selected_account
     st.session_state.pending_actions = []
+    # A fresh backend conversation per (browser tab, selected account) — two
+    # people testing the same account, or one person switching accounts,
+    # must never share server-side conversation state.
+    st.session_state.session_id = str(uuid.uuid4())
 
 # --- confirmation banner for any pending action -----------------------------
 for pending in st.session_state.pending_actions:
@@ -94,7 +99,11 @@ if user_message:
     with st.spinner("Thinking..."):
         resp = requests.post(
             f"{API_URL}/chat",
-            json={"account_id": selected_account, "message": user_message},
+            json={
+                "account_id": selected_account,
+                "session_id": st.session_state.session_id,
+                "message": user_message,
+            },
             timeout=60,
         )
     if not resp.ok:
