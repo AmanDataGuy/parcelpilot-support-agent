@@ -16,6 +16,8 @@
 
 *A single tool-calling agent answers customer questions by reasoning over policy documents, signed contracts, and live account data — scoped so a customer can only ever see their own account, and gated so no action fires without confirmation.*
 
+**[Live app →](https://parcelpilot-support-agent-aibyaman.streamlit.app)**
+
 </div>
 
 ---
@@ -207,7 +209,8 @@ Stated plainly, because a README that hides its edges isn't evidence of anything
 - **The trap suite is six hand-written cases**, not a large or adversarially-generated eval. pass^3 = 1.000 means every case held up three times running against the specific failure modes it targets — it is not a claim of general robustness.
 - **No entity linking between tickets and orders.** A ticket referencing an order does so only in free text; the agent infers the connection from context on every query rather than following a foreign key.
 - **Single-account-at-a-time sessions.** The backend keeps one in-memory conversation per account_id, sized for a demo, not concurrent multi-user production traffic.
+- **Free-tier hosting.** The backend (Render free tier) spins down after 15 minutes idle — the first request after a period of inactivity can take 30-60 seconds to wake it up. Expected on a free deployment, not a bug.
 
 ## Status
 
-Runs locally end to end; not yet deployed to a public host. See [`docs/PRODUCT_NOTE.md`](docs/PRODUCT_NOTE.md) for what was intentionally left out of this submission and what would be built next.
+Deployed: frontend on Streamlit Community Cloud, backend on Render. See [`docs/PRODUCT_NOTE.md`](docs/PRODUCT_NOTE.md) for what was intentionally left out of this submission and what would be built next.
