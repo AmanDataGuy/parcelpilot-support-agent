@@ -54,11 +54,30 @@ for pending in st.session_state.pending_actions:
             st.session_state.pending_actions.remove(pending)
             st.rerun()
 
+def _summarize_step(step: dict) -> dict:
+    """search_documents returns full passage text so the model has complete
+    context — but some source PDFs extract with near one-word-per-line
+    whitespace, which st.json() then pretty-prints as dozens of lines per
+    result. Flatten + truncate for display only; the tool call itself still
+    ran on the untouched full text.
+    """
+    result = step["result"]
+    if step["tool"] == "search_documents" and "results" in result:
+        result = {
+            **result,
+            "results": [
+                {**r, "text": " ".join(r["text"].split())[:200] + ("…" if len(r["text"]) > 200 else "")}
+                for r in result["results"]
+            ],
+        }
+    return {"input": step["input"], "result": result}
+
+
 def _render_trace(trace: list[dict]) -> None:
     with st.expander(f"Tool calls this turn ({len(trace)})"):
         for step in trace:
             st.markdown(f"**{step['tool']}**")
-            st.json({"input": step["input"], "result": step["result"]})
+            st.json(_summarize_step(step))
 
 
 # --- chat history ------------------------------------------------------------
